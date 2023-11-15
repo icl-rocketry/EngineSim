@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import root_scalar
 from pint import UnitRegistry
 from pyfluids import Fluid, FluidsList, Input
+import pandas as pd
 
 def lininterp(x, old_min, old_max, new_min, new_max):
   return (x - old_min)/(old_max - old_min) * (new_max - new_min) + new_min
@@ -392,7 +393,7 @@ def displaysim(showtext):
     print(f'Parabola    (mm) = {thanos_contour.parabola_p1}')
     print(f'ISP         (mm) = {thanos.isp}')
 
-  fig, ax = plt.subplots(1, 4, figsize=(20, 4), sharey=True)
+  fig, ax = plt.subplots(1, 4, figsize=(18, 4), sharey=True)
   #fig.set_size_inches(8, 5)
 
   color = 'tab:gray'
@@ -484,7 +485,16 @@ def displaysim(showtext):
   fig.tight_layout()  # otherwise the right y-label is slightly clipped
   #ax3.set_yticks(np.arange(0, 3000, 500))
   ax[3].grid()
-  plt.show()
+  df = pd.DataFrame(
+      {
+          "x": thanos_contour.x,
+          "hg": thanos_thermals.hg1,
+          "t_gas": thanos_thermals.T,
+          "t_coolant": channelSim.Tco,
+      }
+  )
+  df.to_excel('example_pandas.xlsx', index=False)
+  plt.savefig("output")
 
 
 card_str = """
@@ -499,7 +509,7 @@ add_new_fuel( 'funnymix', card_str )
 
 thanos = RocketEngine(
     oxName = "N2O",
-    fuelName = "Methanol",
+    fuelName = "funnymix",
     thrust = 4000,
     Pc = 20,
     Pe = 0.85,
@@ -514,13 +524,13 @@ thanos_contour = Contour(thanos,
                          points=100             #Discretized Points
                          )
 thanos_thermals = Thermals(thanos, thanos_contour, 0,
-                           hg_multiplier=1      #Funky wonky
+                           hg_multiplier=0.8      #Funky wonky
                            )
 thanos_channel = Channels(thanos, thanos_contour, thanos_thermals,
                           h=0.0015,   #Inner wall thickness
                           hc0=0.0015,  #Initial Channel Height
                           a0=0.004,   #Initial Channel Width
-                          N=40        #Number of channels
+                          N=40        #Number of chan nels
                           )
 
 aluminium = Metal(100, 24e-6,
@@ -536,6 +546,9 @@ aluminium = Metal(100, 24e-6,
 channelSim = ChannelSim(thanos, thanos_contour, thanos_thermals, thanos_channel,
                         metal=aluminium   #Change material
                         )
-print(thanos.At)
+
+
+
+
 displaysim(showtext=True)
 
