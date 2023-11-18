@@ -74,7 +74,7 @@ class RocketEngine:
     self.Re = 8314.46 / self.mwe
 
     self.Cp_c, self.Cp_t, self.Cp_e = self.cea.get_HeatCapacities(Pc=Pc, MR=MR, eps=self.eps)
-    self.rho_c = self.cea.get_Chamber_Density(Pc=Pc, MR=MR, eps=self.eps)
+    self.density_c = self.cea.get_Chamber_Density(Pc=Pc, MR=MR, eps=self.eps)
 
     _, self.visc, self.k, self.pr = self.cea.get_Chamber_Transport(Pc=Pc, MR=MR, eps=self.eps)
     self.cstar = self.cea.get_Cstar(Pc=Pc, MR=MR)
@@ -119,9 +119,9 @@ class Metal:
     self.yield_array = yield_array
     self.modulus_array = modulus_array
   def yield_stress(self, T):
-    return lininterp(T, self.yield_array[0], self.yield_array[1], self.yield_array[2], self.yield_array[3])
+    return np.interp(T, self.yield_array[:,0], self.yield_array[:,1])
   def modulus(self, T):
-    return lininterp(T, self.modulus_array[0], self.modulus_array[1], self.modulus_array[2], self.modulus_array[3])
+    return np.interp(T, self.modulus_array[:,0], self.modulus_array[:,1])
   
 class Contour:
   def __init__(self, engine, chamber_length, radius_cylinder, points):
@@ -130,8 +130,8 @@ class Contour:
     Le = 0.8 * rt * (np.sqrt(engine.eps) - 1) / np.tan(15 * np.pi / 180)
     total_length = chamber_length + Le
 
-    Tn = 28 * np.pi / 180
-    Te = 10 * np.pi / 180
+    Tn = 22 * np.pi / 180
+    Te = 14 * np.pi / 180
 
     # Cyl (For my laziness assume R2 = 0)
     b = 45 * np.pi / 180
@@ -212,8 +212,10 @@ class Thermals:
     points = contour.points
     self.M = np.zeros(points)
     self.T = np.zeros(points)
+    self.density = np.zeros(points)
     self.hg1 = np.zeros(points)
     self.hg2 = np.zeros(points)
+    self.hg3 = np.zeros(points)
     self.stag_recovery = np.zeros(points)
     #self.density = np.zeros(points)
 
@@ -246,8 +248,11 @@ class Thermals:
         M = root_scalar(area_function, args=(area, gamma), bracket=[1, 10]).root
       self.M[i] = M
 
-      T = engine.Tc - engine.mdot * engine.mdot / (2 * Cv * engine.rho_c * engine.rho_c * area * area) * (1 + 0.5 * (engine.gt - 1) * M * M)**(2 / (engine.gt - 1))
+      #T = engine.Tc - engine.mdot * engine.mdot / (2 * Cv * engine.density_c * engine.density_c * area * area) * (1 + 0.5 * (engine.gt - 1) * M * M)**(2 / (engine.gt - 1))
+      T = engine.Tc / (1 + 0.5 * (gamma - 1) * M*M)
       self.T[i] = T
+      density = engine.density_c * (1 + 0.5 * (gamma - 1) * M*M)**(1/(gamma - 1))
+      self.density[i] = density
       correction_factor = 1 / ((0.5 * T / engine.Tc * (1 + 0.5 * (gamma - 1) * M**2)+0.5)**0.68 * (1 + 0.5 * (gamma - 1) * M**2)**0.12)
 
 
@@ -274,9 +279,11 @@ class Thermals:
       R = engine.Rt
       Z = np.pi * contour.r[0]**2 / (2 * np.pi * contour.r[0] * contour.x[-1])
       self.hg2[i] = Z * engine.mdot / (2 * area) * Cp * visc**0.3 * pr **(2/3)
+      
+      self.hg3[i] = 0.023 * (density * M * np.sqrt(gamma * R * T))**0.8 / (2 * r)**0.2 * pr**0.4 * engine.k / visc**0.8
 
 class Channels:
-  def __init__(self, engine, contour, thermals, h, hc0, a0, N): #h = wall thickness
+  def __init__(self, engine, contour, thermals, h, hc0, hcmultiplier, a0, N): #h = wall thickness
     points = contour.points
     self.hc = np.zeros(points)
     self.a = np.zeros(points)
@@ -289,7 +296,7 @@ class Channels:
     self.h = h
 
     for i, r in enumerate(r_list):
-      hc = hc0
+      hc = hc0 * hcmultiplier[i]
       a = a0 * (r + h) / (r0 + h)
       Area = hc0 * a
 
@@ -297,7 +304,7 @@ class Channels:
 
       self.hc[i] = hc0
       self.a[i] = a
-      self.A[i] = hc0 * a
+      self.A[i] = hc * a
       self.per[i] = 2 * hc0 + a + a2
 
 class ChannelSim:
@@ -363,7 +370,27 @@ class ChannelSim:
       stress_temperature = metal.modulus(Twg) * metal.a * q * channel.h * 0.5 / ((1 - 0.3) * metal.k)
       stress_temperature2 = metal.modulus(Twg) * metal.a * (Twg - Twc)
 
-      cf = 0.08 # 70e-6 / 0.0015 -> Moody chart
+      #cf = 0.08 # 70e-6 / 0.0015 -> Moody chart
+      rz = 60e-6
+      cf = (-2*np.log10(0.27*rz/Dh))**-2
+
+
+      #     Pr=; #Prandtl's Number
+      # Cpg=; #Specific Heat of main gas in Combustion Chamber
+      # Cpc=; #Specific Heat of Coolant
+      # x=; #Downstream distance from injection point
+      # s=; #Injection slot height
+      # rho_c=; # Coolant Density
+      # rho_g= # Combustion chamber gas density
+      # v_c=; #Coolant Velocity
+      # v_g=; #Combustion chamber gas velocity
+      # Re_c=; #Reynold's Number of coolant
+      # M=(rho_c*v_c)/(rho_g*v_g);
+
+      # effectiveness=(0.83*(Pr)^(2/3))/(1.11+0.329*(Cpg/Cpc)*(((x/s)*(1/M))^1.43)*Re_c^-0.25); #Film cooling effectiveness
+    
+      # Taw=Twg-effectiveness*(Twg-Tco_i) ; #Taw is adiabatic wall temperature after cooling, Twg is adiabatic wall temperature without film cooling
+      # # Tco_i is initial coolant temperature,
 
       self.Taw[i] = Taw
       self.Twg[i] = Twg
@@ -392,8 +419,9 @@ def displaysim(showtext):
     print(f'Cylinder r  (mm) = {thanos_contour.rc}')
     print(f'Parabola    (mm) = {thanos_contour.parabola_p1}')
     print(f'ISP         (mm) = {thanos.isp}')
+    print(f'CR         (mm) = {thanos.CR}')
 
-  fig, ax = plt.subplots(1, 4, figsize=(18, 4), sharey=True)
+  fig, ax = plt.subplots(1, 4, figsize=(20, 4), sharey=True)
   #fig.set_size_inches(8, 5)
 
   color = 'tab:gray'
@@ -416,6 +444,7 @@ def displaysim(showtext):
   ax0_3.set_ylabel('hg', color=color)  # we already handled the x-label with ax1
   line0_1, = ax0_3.plot(thanos_contour.x, thanos_thermals.hg1, color=color, label='Bartz')
   line0_2, = ax0_3.plot(thanos_contour.x, thanos_thermals.hg2, color=color, label='Adami')
+  #line0_3, = ax0_3.plot(thanos_contour.x, thanos_thermals.hg3, color=color, label='Nusselt')
   ax0_3.tick_params(axis='y', labelcolor=color)
   ax0_3.set_yticks(np.arange(0, 3000, 500))
   fig.tight_layout()
@@ -426,8 +455,11 @@ def displaysim(showtext):
   ax[1].set_xlabel('position (m)')
   ax[1].set_ylabel('chamber radius (m)', color=color)
   ax[1].plot(thanos_contour.x, thanos_contour.r, color=color)
+  #ax[1].plot(thanos_contour.x, thanos_contour.r + thanos_channel.h, color=color)
+  #ax[1].plot(thanos_contour.x, thanos_contour.r + thanos_channel.h + thanos_channel.hc, color=color)
   ax[1].tick_params(axis='y', labelcolor=color)
-  ax[1].set_ylim(0, 0.14)
+  #ax[1].set_ylim(0, 0.14)
+  ax[1].set_box_aspect(1)
 
   color = 'tab:red'
   ax1_2 = ax[1].twinx()  # instantiate a second axes that shares the same x-axis
@@ -497,19 +529,36 @@ def displaysim(showtext):
   plt.savefig("output")
 
 
-card_str = """
+aluminium = Metal(k=100, 
+                  a=24e-6,
+                  yield_array=np.array([
+                    [298, 204e6],
+                    [323, 198e6],
+                    [373, 181e6],
+                    [423, 182e6],
+                    [473, 158e6],
+                    [523, 132e6],
+                    [573, 70e6],
+                    [623, 30e6],
+                    [673, 12e6]]),  #Linear interpolation of old_min, old_max, new_min, new_max. T1, T2, Stress1, Stress2
+                  modulus_array=np.array([
+                    [273,70e9], 
+                    [773,50e9]])   #Linear interpolation of old_min, old_max, new_min, new_max. T1, T2, Stress1, Stress2
+                  )
+
+fuelmix_str = """
 fuel CH3OH(L)   C 1 H 4 O 1
 h,cal=-57040.0      t(k)=298.15       wt%=90.0
 oxid water H 2 O 1  wt%=10.0
 h,cal=-68308.  t(k)=298.15 rho,g/cc = 0.9998
 """
-add_new_fuel( 'funnymix', card_str )
+add_new_fuel( 'fuelmix', fuelmix_str )
 
 
 
 thanos = RocketEngine(
     oxName = "N2O",
-    fuelName = "funnymix",
+    fuelName = "Methanol",
     thrust = 4000,
     Pc = 20,
     Pe = 0.85,
@@ -524,29 +573,21 @@ thanos_contour = Contour(thanos,
                          points=100             #Discretized Points
                          )
 thanos_thermals = Thermals(thanos, thanos_contour, 0,
-                           hg_multiplier=0.8      #Funky wonky
+                           hg_multiplier=1      #Funky wonky
                            )
+
+test_hcmultilier = (thanos_contour.r / thanos_contour.throat[1])**0
 thanos_channel = Channels(thanos, thanos_contour, thanos_thermals,
                           h=0.0015,   #Inner wall thickness
                           hc0=0.0015,  #Initial Channel Height
+                          hcmultiplier = test_hcmultilier,  #Initial Channel Height
                           a0=0.004,   #Initial Channel Width
                           N=40        #Number of chan nels
                           )
 
-aluminium = Metal(100, 24e-6,
-                  yield_array=[273, 573, 300e6, 100e6],  #Linear interpolation of old_min, old_max, new_min, new_max. T1, T2, Stress1, Stress2
-                  modulus_array=[273, 773, 70e9, 50e9]   #Linear interpolation of old_min, old_max, new_min, new_max. T1, T2, Stress1, Stress2
-                  )
-aluminium = Metal(100, 24e-6,
-                  yield_array=[273+25, 273+400, 204e6, 12e6],  #Linear interpolation of old_min, old_max, new_min, new_max. T1, T2, Stress1, Stress2
-                  modulus_array=[273, 773, 70e9, 50e9]   #Linear interpolation of old_min, old_max, new_min, new_max. T1, T2, Stress1, Stress2
-                  )
-
-
 channelSim = ChannelSim(thanos, thanos_contour, thanos_thermals, thanos_channel,
                         metal=aluminium   #Change material
                         )
-
 
 
 
