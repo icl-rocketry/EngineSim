@@ -109,6 +109,7 @@ class RocketEngine:
                         thermal_cond_units='mcal/cm-K-s',  # wtf
                         fac_CR=self.CR,
                         make_debug_prints=False)
+        self.unitless_cea = rocketcea.cea_obj.CEA_Obj(oxName = self.oxName,fuelName = self.fuelName,fac_CR=self.CR,)
 
         self.eps = self.cea.get_eps_at_PcOvPe(Pc=self.Pc, MR=self.MR, PcOvPe = self.Pc/self.Pe)
         self.Tc, self.Tt, self.Te = self.cea.get_Temperatures(Pc=self.Pc, MR=self.MR, eps=self.eps)
@@ -124,7 +125,7 @@ class RocketEngine:
         self.Cp_c, self.Cp_t, self.Cp_e = self.cea.get_HeatCapacities(Pc=self.Pc, MR=self.MR, eps=self.eps)
         self.density_c = self.cea.get_Chamber_Density(Pc=self.Pc, MR=self.MR, eps=self.eps)
 
-        _, self.visc, self.k, self.pr = self.cea.get_Chamber_Transport(Pc=self.Pc, MR=self.MR, eps=self.eps)
+        _, self.visc, self.k, self.oldpr = self.cea.get_Chamber_Transport(Pc=self.Pc, MR=self.MR, eps=self.eps)
         self.cstar = self.cea.get_Cstar(Pc=self.Pc, MR=self.MR)
         self.isp = self.cea.estimate_Ambient_Isp(Pc=self.Pc, MR=self.MR, eps=self.eps, Pamb=1)
 
@@ -199,6 +200,65 @@ class RocketEngine:
 
         x_throat = np.argmin(self.r)
         self.x_throat = x_throat
+        
+        contours = np.split(self.r,[x_throat])
+        subar = contours[0]**2 * np.pi / self.At
+        supar = contours[1]**2 * np.pi / self.At
+        
+        self.P = np.zeros(self.points)
+        self.T = np.zeros(self.points)
+        self.density = np.zeros(self.points)
+        self.mw = np.zeros(self.points)
+        self.Cp = np.zeros(self.points)
+        self.gamma = np.zeros(self.points)
+        self.sonvel = np.zeros(self.points)
+        self.M = np.zeros(self.points)
+        self.pr = np.zeros(self.points)
+        for i in range(subar.size):
+            CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",subar=[subar[i]], show_transport=1)
+            CEAarray = CEAstring.split()
+            j = 0
+            while CEAarray[j]!= 'P,': j = j + 1; 
+            self.P[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'T,': j = j + 1; 
+            self.T[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'RHO,': j = j + 1; 
+            self.density[i] = float(CEAarray[j + 5].replace('-','e-')) * 1000;
+            while CEAarray[j]!= 'M,': j = j + 1; 
+            self.mw[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'Cp,': j = j + 1; 
+            self.Cp[i] = float(CEAarray[j + 5]) * 4186.8;
+            while CEAarray[j]!= 'GAMMAs': j = j + 1; 
+            self.gamma[i] = CEAarray[j + 4];
+            while CEAarray[j]!= 'SON': j = j + 1; 
+            self.sonvel[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'MACH': j = j + 1; 
+            self.M[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'PRANDTL': j = j + 1; 
+            self.pr[i] = CEAarray[j + 5];
+        
+        for i in range(subar.size, subar.size + supar.size):
+            CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",eps=[supar[i - subar.size]],show_transport=1)
+            CEAarray = CEAstring.split()
+            j = 1
+            while CEAarray[j]!= 'P,': j = j + 1; 
+            self.P[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'T,': j = j + 1; 
+            self.T[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'RHO,': j = j + 1; 
+            self.density[i] = float(CEAarray[j + 5].replace('-','e-')) * 1000;
+            while CEAarray[j]!= 'M,': j = j + 1; 
+            self.mw[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'Cp,': j = j + 1; 
+            self.Cp[i] = float(CEAarray[j + 5]) * 4186.8;
+            while CEAarray[j]!= 'GAMMAs': j = j + 1; 
+            self.gamma[i] = CEAarray[j + 4];
+            while CEAarray[j]!= 'SON': j = j + 1; 
+            self.sonvel[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'MACH': j = j + 1; 
+            self.M[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'PRANDTL': j = j + 1; 
+            self.pr[i] = CEAarray[j + 5];
 
         #Finding mach number, https://kyleniemeyer.github.io/gas-dynamics-notes/compressible-flows/isentropic.html#equation-eq-area-ratio-loss
         def area_function(mach, area, gamma):
