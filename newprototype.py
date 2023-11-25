@@ -5,7 +5,7 @@ import rocketcea.cea_obj
 from matplotlib import pyplot as plt
 from scipy.optimize import root_scalar
 from pint import UnitRegistry
-from pyfluids import Fluid, FluidsList, Input
+from pyfluids import Fluid, FluidsList, Input, Mixture
 import pandas as pd
 ureg = UnitRegistry()
 Q_ = ureg.Quantity
@@ -62,12 +62,13 @@ class RocketEngine:
         self.theta_n = theta_n
         self.theta_e = theta_e
         self.theta_c = theta_c
-    def defineChannels(self, h, hc0, hcmultiplier, a0, N_channels):
+    def defineChannels(self, h, hc0, hcmultiplier, a0, N_channels, helical_angle):
         self.h = h
         self.hc0 = hc0
         self.hcmultiplier = hcmultiplier
         self.a0 = a0
         self.N_channels = N_channels
+        self.helical_angle = helical_angle
     def runSim(self):
         # CEA
         self.cea = CEA_Obj(oxName = self.oxName,
@@ -142,26 +143,30 @@ class RocketEngine:
         self.theta_e = 14 * np.pi / 180
 
         # Cyl (For my laziness assume R2 = 0)
-        b = 45 * np.pi / 180
+        b = 35 * np.pi / 180
         x_conv = self.chamber_length + 1.5 * rt * np.cos(-b - np.pi / 2)
         y_conv = 2.5 * rt + 1.5 * rt * np.sin(-b - np.pi / 2)
-
-        x_slope = (self.radius_cylinder - y_conv) / np.tan(b)
+        r_conv = (self.radius_cylinder - y_conv) / (1 - np.cos(b))
+        y0 = self.radius_cylinder - r_conv
+        x_slope = r_conv * np.sin(b)
 
         contour_cyl = np.array([
             [0, self.radius_cylinder],
-            [x_conv - x_slope,self.radius_cylinder],
-            [x_conv,y_conv]])
+            [x_conv - x_slope,self.radius_cylinder]])
 
+        # Cylinder -> Converge
+        contour_cylinder_conv = np.zeros((self.points - 1,2))
+        for i in range(1, self.points):
+            t = lininterp(i, 0, self.points - 1, 0, b)
+            contour_cylinder_conv[i - 1] = np.array([x_conv - x_slope + r_conv * np.sin(t), y0 + r_conv * np.cos(t)])
+            
         # Converge -> Throat
-
         contour_converge_throat = np.zeros((self.points - 1,2))
         for i in range(1, self.points):
             t = lininterp(i, 0, self.points - 1, -b - np.pi / 2, - np.pi / 2)
             contour_converge_throat[i - 1] = np.array([self.chamber_length + 1.5 * rt * np.cos(t), 2.5 * rt + 1.5 * rt * np.sin(t)])
 
-            # Throat -> Parabola
-
+        # Throat -> Parabola
             contour_throat_parabola = np.zeros((self.points - 1,2))
         for i in range(1, self.points):
             t = lininterp(i, 0, self.points - 1, 0 - np.pi / 2, self.theta_n - np.pi / 2)
@@ -183,7 +188,7 @@ class RocketEngine:
             parabola_linear1 = pointinterp(t, parabola_p1, parabola_p2)
             contour_parabola[i - 1] = pointinterp(t, parabola_linear0, parabola_linear1)
 
-        contour = np.concatenate([contour_cyl, contour_converge_throat, contour_throat_parabola, contour_parabola])
+        contour = np.concatenate([contour_cyl, contour_cylinder_conv, contour_converge_throat, contour_throat_parabola, contour_parabola])
         self.x = np.linspace(contour[:,0].min(), contour[:,0].max(), num=self.points)
         self.r = np.interp(self.x, contour[:,0], contour[:,1])
 
@@ -251,23 +256,29 @@ class RocketEngine:
             self.stag_recovery[i] = (1 + 0.5*(gamma - 1)*M**2*pr**0.33)
 
             #Bartz
+            bmPc = self.Pc * 1e5
+            bmcstar = self.cstar
+            bmDt = np.sqrt(4 * self.At / np.pi)
+            bmcurv = (1.5 * rt + 0.382 * rt) * 0.5
+            bmCp = Cp
+            bmvisc = Q_(visc, ureg.lbf * ureg.second/ (ureg.inch ** 2)).to(ureg.pascal * ureg.second).magnitude
+            
 
             bPc = Q_(self.Pc, ureg.bar).to('psi')
             bcstar = Q_(self.cstar, ureg.meter / ureg.second).to('feet / second')
             bDt = Q_(np.sqrt(4 * self.At / np.pi), ureg.meter).to('inch')
             bcurv = Q_((1.5 * rt + 0.382 * rt) * 0.5, ureg.meter).to("inch")
-            bCp = Q_(Cp, ureg.joule / (ureg.kilogram * ureg.degK)).to('Btu / (lb * delta_degF)')
+            bCp = Q_(Cp, ureg.joule / (ureg.kilogram * ureg.degK)).to('Btu / (lb * degR)')
             bvisc = Q_(visc, ureg.lbf * ureg.second/ (ureg.inch ** 2))
             bg = Q_(9.81, ureg.meter / ureg.second**2).to('feet / second**2')
             bAtA = self.At / area
-            self.hg1[i] = Q_((0.026 / bDt**0.2 * (bvisc**0.2 * bCp / pr**0.6) * (bPc * bg / bcstar)**0.8 * (bDt / bcurv)**0.1 * bAtA**0.9 * correction_factor).magnitude, "Btu / (inch ** 2 * second)").to("W / (m**2)").magnitude
-
+            self.hg1[i] = Q_((0.026 / bDt**0.2 * (bvisc**0.2 * bCp / pr**0.6) * (bPc * bg / bcstar)**0.8 * (bDt / bcurv)**0.1 * bAtA**0.9 * correction_factor).magnitude, "Btu / (inch ** 2 * second * degR) ").to("W / (m**2 * degK)").magnitude
             #Adami
             R = self.Rt
             Z = np.pi * self.r[0]**2 / (2 * np.pi * self.r[0] * self.x[-1])
             self.hg2[i] = Z * self.mdot / (2 * area) * Cp * visc**0.3 * pr **(2/3)
             
-            self.hg3[i] = 0.023 * (density * M * np.sqrt(gamma * R * T))**0.8 / (2 * r)**0.2 * pr**0.4 * self.k / visc**0.8
+            self.hg3[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor
         
             self.hc = np.zeros(self.points)
         self.a = np.zeros(self.points)
@@ -295,7 +306,7 @@ class RocketEngine:
         self.Tco = np.zeros(self.points)
         self.velocity = np.zeros(self.points)
         self.hg = np.zeros(self.points)
-        self.hc = np.zeros(self.points)
+        #self.hc = np.zeros(self.points)
         self.hw = np.zeros(self.points)
         self.q = np.zeros(self.points)
         self.stress_pressure = np.zeros(self.points)
@@ -317,18 +328,19 @@ class RocketEngine:
             A = self.A[i]
             per = self.per[i]
 
-            methanol = Fluid(FluidsList.Methanol).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
+            coolant = Mixture([FluidsList.Water, FluidsList.Methanol], [0.1, 99.9]).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
+            coolant = Fluid(FluidsList.Methanol).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
 
-            k = methanol.conductivity
-            density = methanol.density
-            pr = methanol.prandtl
-            viscosity = methanol.dynamic_viscosity
-            cp = methanol.specific_heat
+            k = coolant.conductivity
+            density = coolant.density
+            pr = coolant.prandtl
+            viscosity = coolant.dynamic_viscosity
+            cp = coolant.specific_heat
 
             Dh = 4 * A / per
-            #velocity = mdot/(A * density * np.cos(30 * np.pi / 180))
+            velocity = mdot/(A * density * np.cos(self.helical_angle * np.pi / 180))
             #velocity = mdot/(A * density * np.sin(np.arctan(204 / (75 * np.pi) * 0.075 / r)))
-            velocity = mdot/(A * density)
+            #velocity = mdot/(A * density)
 
             Twc = Tco_i + 100
             for j in range(0, 10):
@@ -372,7 +384,7 @@ class RocketEngine:
             self.Tco[i] = Tco_i
             self.velocity[i] = velocity
             self.hg[i] = hg
-            self.hc[i] = hc
+            #self.hc[i] = hc
             self.hw[i] = self.metal.k / self.h
             self.q[i] = q
             self.stress_pressure[i] = stress_pressure
@@ -384,6 +396,118 @@ class RocketEngine:
             dx = self.x[1] - self.x[0]
             Tco_i = Tco_i + 1 / (mdot * cp) * q * (2 * np.pi * r * dx / self.N_channels)
             Pco_i = Pco_i - 32 * cf * dx * mdot **2 / (density * np.pi**2 * Dh**5)
+
+
+def displaysim(showtext):
+  if showtext:
+    print(f'Mass flux (kg/s) = {thanos.mdot}')
+    print(f'Throat      (mm) = {thanos.throat}')
+    print(f'Exit        (mm) = {thanos.exit}')
+    print(f'Cylinder r  (mm) = {thanos.rc}')
+    print(f'Parabola    (mm) = {thanos.parabola_p1}')
+    print(f'ISP         (mm) = {thanos.isp}')
+    print(f'CR         (mm) = {thanos.CR}')
+
+  fig, ax = plt.subplots(2, 3, figsize=(15, 7),sharey=True)
+
+  color = 'tab:gray'
+  ax[0,0].set_xlabel('position (m)')
+  ax[0,0].set_ylabel('chamber radius (m)', color=color)
+  ax[0,0].plot(thanos.x, thanos.r, color=color)
+  ax[0,0].tick_params(axis='y', labelcolor=color)
+  ax[0,0].set_ylim(0, 0.14)
+
+  color = 'tab:blue'
+  ax00_2 = ax[0,0].twinx()  # instantiate a second axes that shares the same x-axis
+  ax00_2.set_ylabel('temperature (K)', color=color)  # we already handled the x-label with ax1
+  ax00_2.plot(thanos.x, thanos.T, color=color)
+  ax00_2.spines['right'].set_position(('outward', 60))
+  ax00_2.tick_params(axis='y', labelcolor=color)
+
+  color = 'tab:orange'
+  ax00_3 = ax[0,0].twinx()  # instantiate a second axes that shares the same x-axis
+  ax00_3.set_ylabel('hg', color=color)  # we already handled the x-label with ax1
+  line00_1, = ax00_3.plot(thanos.x, thanos.hg1, color=color, label='Bartz')
+  line00_2, = ax00_3.plot(thanos.x, thanos.hg2, color=color, label='Adami')
+  line00_3, = ax00_3.plot(thanos.x, thanos.hg3, color='tab:blue', label='Test')
+  ax00_3.tick_params(axis='y', labelcolor=color)
+  #ax00_3.set_yticks(np.arange(0, 3000, 500))
+  fig.tight_layout()
+  ax[0,0].grid()
+  ax00_3.legend(handles=[line00_1, line00_2, line00_3], loc='upper right')
+#----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  color = 'tab:gray'
+  ax[0,1].set_xlabel('position (m)')
+  ax[0,1].set_ylabel('chamber radius (m)', color=color)
+  ax[0,1].plot(thanos.x, thanos.r, color=color)
+  #ax[1].plot(thanos.x, thanos.r + thanos_channel.h, color=color)
+  #ax[1].plot(thanos.x, thanos.r + thanos_channel.h + thanos_channel.hc, color=color)
+  ax[0,1].tick_params(axis='y', labelcolor=color)
+  #ax[0,1].set_box_aspect(1)
+
+  color = 'tab:red'
+  ax01_2 = ax[0,1].twinx()  # instantiate a second axes that shares the same x-axis
+  ax01_2.set_ylabel('Hot Gas Wall Temperature (K)', color=color)  # we already handled the x-label with ax1
+  ax01_2.tick_params(axis='y', labelcolor=color)
+  line01_1, = ax01_2.plot(thanos.x, thanos.Twg, color='tab:red', label='T Combustion Side Wall')
+  line01_2, = ax01_2.plot(thanos.x, thanos.Twc, color='tab:orange', label='T Coolant Side Wall')
+  line01_3, = ax01_2.plot(thanos.x, thanos.Tco, color='tab:blue', label='T Coolant Bulk')
+  ax[0,1].grid()
+  ax01_2.legend(handles=[line01_1, line01_2, line01_3], loc='upper left')
+#----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  color = 'tab:gray'
+  ax[0,2].set_xlabel('position (m)')
+  ax[0,2].set_ylabel('chamber radius (m)', color=color)
+  ax[0,2].plot(thanos.x, thanos.r, color=color)
+  ax[0,2].tick_params(axis='y', labelcolor=color)
+  ax02_2 = ax[0,2].twinx()  # instantiate a second axes that shares the same x-axis
+  color = 'tab:orange'
+  ax02_2.set_ylabel('Stress (MPa)', color=color)  # we already handled the x-label with ax1
+  ax02_2.tick_params(axis='y', labelcolor=color)
+  line02_1, = ax02_2.plot(thanos.x, thanos.stress_total * 1e-6, color='tab:pink', label='Total Stress')
+  line02_3, = ax02_2.plot(thanos.x, thanos.stress_pressure * 1e-6, color='tab:purple', label='Pressure Stress')
+  line02_2, = ax02_2.plot(thanos.x, thanos.metal.yield_stress(thanos.Twg) * 1e-6, color='tab:green', label='Yield Stress')
+
+  #ax1.set_aspect('equal', adjustable='box')
+  fig.tight_layout()  # otherwise the right y-label is slightly clipped
+  #ax3.set_yticks(np.arange(0, 3000, 500))
+  ax[0,2].grid()
+  ax02_2.legend(handles=[line02_1, line02_2, line02_3], loc='upper left')
+  #----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  color = 'tab:gray'
+  ax[1,0].set_xlabel('position (m)')
+  ax[1,0].set_ylabel('chamber radius (m)', color=color)
+  ax[1,0].plot(thanos.x, thanos.r, color=color)
+  ax[1,0].tick_params(axis='y', labelcolor=color)
+  ax[1,0].set_ylim(0, 0.14)
+
+  color='tab:orange'
+  ax10_2 = ax[1,0].twinx()  # instantiate a second axes that shares the same x-axis
+  ax10_2.set_ylabel('Velocity (m/d)', color=color)  # we already handled the x-label with ax1
+  ax10_2.tick_params(axis='y', labelcolor=color)
+  line10_1, = ax10_2.plot(thanos.x, thanos.velocity, color=color)
+
+  color='tab:pink'
+  ax10_3 = ax[1,0].twinx()  # instantiate a second axes that shares the same x-axis
+  ax10_3.set_ylabel('Pressure (bar)', color=color)  # we already handled the x-label with ax1
+  ax10_3.tick_params(axis='y', labelcolor=color)
+  ax10_3.spines['right'].set_position(('outward', 60))
+  line01_2, = ax10_3.plot(thanos.x, thanos.Pco * 1e-5, color=color)
+
+  #ax1.set_aspect('equal', adjustable='box')
+  fig.tight_layout()  # otherwise the right y-label is slightly clipped
+  #ax3.set_yticks(np.arange(0, 3000, 500))
+  ax[1,0].grid()
+  plt.savefig("output")
+
+
+fuelmix_str = """
+fuel CH3OH(L)   C 1 H 4 O 1
+h,cal=-57040.0      t(k)=298.15       wt%=99.9
+oxid water H 2 O 1  wt%=0.1
+h,cal=-68308.  t(k)=298.15 rho,g/cc = 0.9998
+"""
+add_new_fuel( 'fuelmix', fuelmix_str )
 
 
 thanos = RocketEngine(
@@ -409,143 +533,35 @@ thanos.defineChannels(
     hc0=0.0015,
     hcmultiplier=np.ones(100),
     a0=0.004,
-    N_channels=40
+    N_channels=40,
+    helical_angle=0
 )
 thanos.runSim()
+displaysim(True)
 
 
-def displaysim(showtext):
-  if showtext:
-    print(f'Mass flux (kg/s) = {thanos.mdot}')
-    print(f'Throat      (mm) = {thanos.throat}')
-    print(f'Exit        (mm) = {thanos.exit}')
-    print(f'Cylinder r  (mm) = {thanos.rc}')
-    print(f'Parabola    (mm) = {thanos.parabola_p1}')
-    print(f'ISP         (mm) = {thanos.isp}')
-    print(f'CR         (mm) = {thanos.CR}')
-
-  fig, ax = plt.subplots(1, 4, figsize=(20, 4), sharey=True)
-  #fig.set_size_inches(8, 5)
-
-  color = 'tab:gray'
-  ax[0].set_xlabel('position (m)')
-  ax[0].set_ylabel('chamber radius (m)', color=color)
-  ax[0].plot(thanos.x, thanos.r, color=color)
-  ax[0].tick_params(axis='y', labelcolor=color)
-  # ax[0].set_aspect('equal', adjustable='box')
-  ax[0].set_ylim(0, 0.14)
-
-  color = 'tab:blue'
-  ax0_2 = ax[0].twinx()  # instantiate a second axes that shares the same x-axis
-  ax0_2.set_ylabel('temperature (K)', color=color)  # we already handled the x-label with ax1
-  ax0_2.plot(thanos.x, thanos.T, color=color)
-  ax0_2.spines['right'].set_position(('outward', 60))
-  ax0_2.tick_params(axis='y', labelcolor=color)
-
-  color = 'tab:orange'
-  ax0_3 = ax[0].twinx()  # instantiate a second axes that shares the same x-axis
-  ax0_3.set_ylabel('hg', color=color)  # we already handled the x-label with ax1
-  line0_1, = ax0_3.plot(thanos.x, thanos.hg1, color=color, label='Bartz')
-  line0_2, = ax0_3.plot(thanos.x, thanos.hg2, color=color, label='Adami')
-  #line0_3, = ax0_3.plot(thanos.x, thanos.hg3, color=color, label='Nusselt')
-  ax0_3.tick_params(axis='y', labelcolor=color)
-  ax0_3.set_yticks(np.arange(0, 3000, 500))
-  fig.tight_layout()
-  ax[0].grid()
-  ax0_3.legend(handles=[line0_1, line0_2], loc='upper right')
-#----------------------------------------------------------------------------------------------------------------------------------------------------------------
-  color = 'tab:gray'
-  ax[1].set_xlabel('position (m)')
-  ax[1].set_ylabel('chamber radius (m)', color=color)
-  ax[1].plot(thanos.x, thanos.r, color=color)
-  #ax[1].plot(thanos.x, thanos.r + thanos_channel.h, color=color)
-  #ax[1].plot(thanos.x, thanos.r + thanos_channel.h + thanos_channel.hc, color=color)
-  ax[1].tick_params(axis='y', labelcolor=color)
-  #ax[1].set_ylim(0, 0.14)
-  ax[1].set_box_aspect(1)
-
-  color = 'tab:red'
-  ax1_2 = ax[1].twinx()  # instantiate a second axes that shares the same x-axis
-  ax1_2.set_ylabel('Hot Gas Wall Temperature (K)', color=color)  # we already handled the x-label with ax1
-  #ax1_2.spines['right'].set_position(('outward', 60))
-  ax1_2.tick_params(axis='y', labelcolor=color)
-  line1_1, = ax1_2.plot(thanos.x, thanos.Twg, color='tab:red', label='T Combustion Side Wall')
-  line1_2, = ax1_2.plot(thanos.x, thanos.Twc, color='tab:orange', label='T Coolant Side Wall')
-  line1_3, = ax1_2.plot(thanos.x, thanos.Tco, color='tab:blue', label='T Coolant Bulk')
-  ax[1].grid()
-  ax1_2.legend(handles=[line1_1, line1_2, line1_3], loc='upper left')
-#----------------------------------------------------------------------------------------------------------------------------------------------------------------
-  color = 'tab:gray'
-  ax[2].set_xlabel('position (m)')
-  ax[2].set_ylabel('chamber radius (m)', color=color)
-  ax[2].plot(thanos.x, thanos.r, color=color)
-  ax[2].tick_params(axis='y', labelcolor=color)
-  ax[2].set_ylim(0, 0.14)
-  ax2_2 = ax[2].twinx()  # instantiate a second axes that shares the same x-axis
-  color = 'tab:orange'
-  ax2_2.set_ylabel('Stress (MPa)', color=color)  # we already handled the x-label with ax1
-  ax2_2.tick_params(axis='y', labelcolor=color)
-  line2_1, = ax2_2.plot(thanos.x, thanos.stress_total * 1e-6, color='tab:pink', label='Total Stress')
-  line2_3, = ax2_2.plot(thanos.x, thanos.stress_pressure * 1e-6, color='tab:purple', label='Pressure Stress')
-  line2_2, = ax2_2.plot(thanos.x, thanos.metal.yield_stress(thanos.Twg) * 1e-6, color='tab:green', label='Yield Stress')
-
-  #ax1.set_aspect('equal', adjustable='box')
-  fig.tight_layout()  # otherwise the right y-label is slightly clipped
-  #ax3.set_yticks(np.arange(0, 3000, 500))
-  ax[2].grid()
-  ax2_2.legend(handles=[line2_1, line2_2, line2_3], loc='upper left')
-  #----------------------------------------------------------------------------------------------------------------------------------------------------------------
-  color = 'tab:gray'
-  ax[3].set_xlabel('position (m)')
-  ax[3].set_ylabel('chamber radius (m)', color=color)
-  ax[3].plot(thanos.x, thanos.r, color=color)
-  ax[3].tick_params(axis='y', labelcolor=color)
-  # ax[2].set_aspect('equal', adjustable='box')
-  ax[3].set_ylim(0, 0.14)
-
-  color='tab:orange'
-  ax3_2 = ax[3].twinx()  # instantiate a second axes that shares the same x-axis
-  ax3_2.set_ylabel('Velocity (m/d)', color=color)  # we already handled the x-label with ax1
-  ax3_2.tick_params(axis='y', labelcolor=color)
-  line3_1, = ax3_2.plot(thanos.x, thanos.velocity, color=color)
-
-  color='tab:pink'
-  ax3_3 = ax[3].twinx()  # instantiate a second axes that shares the same x-axis
-  ax3_3.set_ylabel('Pressure (bar)', color=color)  # we already handled the x-label with ax1
-  ax3_3.tick_params(axis='y', labelcolor=color)
-  ax3_3.spines['right'].set_position(('outward', 60))
-  line3_2, = ax3_3.plot(thanos.x, thanos.Pco * 1e-5, color=color)
-
-  #ax1.set_aspect('equal', adjustable='box')
-  fig.tight_layout()  # otherwise the right y-label is slightly clipped
-  #ax3.set_yticks(np.arange(0, 3000, 500))
-  ax[3].grid()
-  df = pd.DataFrame(
-      {
-          "x": thanos.x,
-          "hg": thanos.hg1,
-          "t_gas": thanos.T,
-          "t_coolant": thanos.Tco,
-      }
-  )
-  df.to_excel('example_pandas.xlsx', index=False)
-  plt.savefig("output")
-
+#thanos.fuelName = "Ethanol"
+#thanos.runSim()
 #displaysim(True)
 
-I = np.linspace(0.0005, 0.0035, 20)
-yieldstress = np.zeros(20)
-totalstress = np.zeros(20)
-for i, h in enumerate(I):
-    thanos.h = h
-    thanos.runSim()
-    yieldstress[i] = thanos.metal.yield_stress(thanos.Twg[thanos.x_throat])
-    totalstress[i] = thanos.stress_total[thanos.x_throat]
-plt.plot(I, yieldstress * 1e-6, color='green', label='Yield at throat')
-plt.plot(I, totalstress * 1e-6, color='blue', label='Max stress at throat')
-plt.xlabel('Inner Wall Thickness')
-plt.ylabel('Stress (MPa)')
-plt.legend()
-plt.show()
-    
-    
+# '''
+# fig, ax = plt.subplots(1, 1)
+# I = np.linspace(0, 40, 10)
+# OFLIST = np.linspace(2.5,2.5,1)
+# yieldstress = np.zeros(10)
+# totalstress = np.zeros(10)
+# for j, o_f in enumerate(OFLIST):
+#     thanos.MR = o_f
+#     for i, h in enumerate(I):
+#         thanos.helical_angle = h
+#         thanos.runSim()
+#         yieldstress[i] = thanos.metal.yield_stress(thanos.Twg[thanos.x_throat])
+#         totalstress[i] = thanos.stress_total[thanos.x_throat]
+#     plt.plot(I, yieldstress * 1e-6 - totalstress * 1e-6, color='green', label=str(o_f))
+#     #plt.plot(I, totalstress * 1e-6, color='blue', label='Max stress at throat')
+# plt.xlabel('Helical angle')
+# plt.ylabel('Stress (MPa)')
+# plt.legend()
+# plt.show()
+
+# '''
