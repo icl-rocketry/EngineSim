@@ -125,7 +125,7 @@ class RocketEngine:
         self.Cp_c, self.Cp_t, self.Cp_e = self.cea.get_HeatCapacities(Pc=self.Pc, MR=self.MR, eps=self.eps)
         self.density_c = self.cea.get_Chamber_Density(Pc=self.Pc, MR=self.MR, eps=self.eps)
 
-        _, self.visc, self.k, self.oldpr = self.cea.get_Chamber_Transport(Pc=self.Pc, MR=self.MR, eps=self.eps)
+        _, self.oldvisc, self.oldk, self.oldpr = self.cea.get_Chamber_Transport(Pc=self.Pc, MR=self.MR, eps=self.eps)
         self.cstar = self.cea.get_Cstar(Pc=self.Pc, MR=self.MR)
         self.isp = self.cea.estimate_Ambient_Isp(Pc=self.Pc, MR=self.MR, eps=self.eps, Pamb=1)
 
@@ -214,6 +214,8 @@ class RocketEngine:
         self.sonvel = np.zeros(self.points)
         self.M = np.zeros(self.points)
         self.pr = np.zeros(self.points)
+        self.visc = np.zeros(self.points)
+        self.k = np.zeros(self.points)
         for i in range(subar.size):
             CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",subar=[subar[i]], show_transport=1)
             CEAarray = CEAstring.split()
@@ -234,6 +236,10 @@ class RocketEngine:
             self.sonvel[i] = CEAarray[j + 5];
             while CEAarray[j]!= 'MACH': j = j + 1; 
             self.M[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'VISC,MILLIPOISE': j = j + 1; 
+            self.visc[i] = CEAarray[j + 4];
+            while CEAarray[j]!= 'CONDUCTIVITY': j = j + 1; 
+            self.k[i] = CEAarray[j + 4];
             while CEAarray[j]!= 'PRANDTL': j = j + 1; 
             self.pr[i] = CEAarray[j + 5];
         
@@ -257,6 +263,10 @@ class RocketEngine:
             self.sonvel[i] = CEAarray[j + 5];
             while CEAarray[j]!= 'MACH': j = j + 1; 
             self.M[i] = CEAarray[j + 5];
+            while CEAarray[j]!= 'VISC,MILLIPOISE': j = j + 1; 
+            self.visc[i] = CEAarray[j + 4];
+            while CEAarray[j]!= 'CONDUCTIVITY': j = j + 1; 
+            self.k[i] = CEAarray[j + 4];
             while CEAarray[j]!= 'PRANDTL': j = j + 1; 
             self.pr[i] = CEAarray[j + 5];
 
@@ -334,9 +344,9 @@ def displaysim(showtext):
   
   color = 'tab:red'
   ax00_2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
-  ax00_2.set_ylabel('Temperature (K)', color=color)  # we already handled the x-label with ax1
-  ax00_2.plot(thanos.x, thanos.oldT, color=color, linestyle='dashed')
-  ax00_2.plot(thanos.x, thanos.T, color=color)
+  ax00_2.set_ylabel('Conductivity', color=color)  # we already handled the x-label with ax1
+  ax00_2.plot(thanos.x, thanos.oldk * np.ones(100), color=color, linestyle='dashed')
+  ax00_2.plot(thanos.x, thanos.k, color=color)
   ax00_2.spines['right'].set_position(('outward', 0))
   ax00_2.tick_params(axis='y', labelcolor=color)
   
@@ -350,9 +360,9 @@ def displaysim(showtext):
   
   color = 'tab:green'
   ax00_2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
-  ax00_2.set_ylabel('Prandtl Number', color=color)  # we already handled the x-label with ax1
-  ax00_2.plot(thanos.x, np.ones(100) * thanos.oldpr , color=color, linestyle='dashed')
-  ax00_2.plot(thanos.x, thanos.pr , color=color)
+  ax00_2.set_ylabel('Viscosity', color=color)  # we already handled the x-label with ax1
+  ax00_2.plot(thanos.x, np.ones(100) * Q_(thanos.oldvisc , ureg.lbf * ureg.second/ (ureg.inch ** 2)).to(ureg.millipoise).magnitude, color=color, linestyle='dashed')
+  ax00_2.plot(thanos.x, thanos.visc , color=color)
   ax00_2.spines['right'].set_position(('outward', 120))
   ax00_2.tick_params(axis='y', labelcolor=color)
 

@@ -125,7 +125,7 @@ class RocketEngine:
         self.Cp_c, self.Cp_t, self.Cp_e = self.cea.get_HeatCapacities(Pc=self.Pc, MR=self.MR, eps=self.eps)
         self.density_c = self.cea.get_Chamber_Density(Pc=self.Pc, MR=self.MR, eps=self.eps)
 
-        _, self.visc, self.k, self.oldpr = self.cea.get_Chamber_Transport(Pc=self.Pc, MR=self.MR, eps=self.eps)
+        _, self.oldvisc, self.oldk, self.oldpr = self.cea.get_Chamber_Transport(Pc=self.Pc, MR=self.MR, eps=self.eps)
         self.cstar = self.cea.get_Cstar(Pc=self.Pc, MR=self.MR)
         self.isp = self.cea.estimate_Ambient_Isp(Pc=self.Pc, MR=self.MR, eps=self.eps, Pamb=1)
 
@@ -144,7 +144,7 @@ class RocketEngine:
         self.theta_e = 14 * np.pi / 180
 
         # Cyl (For my laziness assume R2 = 0)
-        b = 35 * np.pi / 180
+        b = self.theta_c * np.pi / 180
         x_conv = self.chamber_length + 1.5 * rt * np.cos(-b - np.pi / 2)
         y_conv = 2.5 * rt + 1.5 * rt * np.sin(-b - np.pi / 2)
         r_conv = (self.radius_cylinder - y_conv) / (1 - np.cos(b))
@@ -201,117 +201,73 @@ class RocketEngine:
         x_throat = np.argmin(self.r)
         self.x_throat = x_throat
         
-        contours = np.split(self.r,[x_throat])
-        subar = contours[0]**2 * np.pi / self.At
-        supar = contours[1]**2 * np.pi / self.At
+        ar = self.r ** 2 * np.pi / self.At
         
         self.P = np.zeros(self.points)
         self.T = np.zeros(self.points)
-        self.density = np.zeros(self.points)
         self.mw = np.zeros(self.points)
-        self.Cp = np.zeros(self.points)
         self.gamma = np.zeros(self.points)
         self.sonvel = np.zeros(self.points)
         self.M = np.zeros(self.points)
         self.pr = np.zeros(self.points)
-        for i in range(subar.size):
-            CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",subar=[subar[i]], show_transport=1)
-            CEAarray = CEAstring.split()
-            j = 0
-            while CEAarray[j]!= 'P,': j = j + 1; 
-            self.P[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'T,': j = j + 1; 
-            self.T[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'RHO,': j = j + 1; 
-            self.density[i] = float(CEAarray[j + 5].replace('-','e-')) * 1000;
-            while CEAarray[j]!= 'M,': j = j + 1; 
-            self.mw[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'Cp,': j = j + 1; 
-            self.Cp[i] = float(CEAarray[j + 5]) * 4186.8;
-            while CEAarray[j]!= 'GAMMAs': j = j + 1; 
-            self.gamma[i] = CEAarray[j + 4];
-            while CEAarray[j]!= 'SON': j = j + 1; 
-            self.sonvel[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'MACH': j = j + 1; 
-            self.M[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'PRANDTL': j = j + 1; 
-            self.pr[i] = CEAarray[j + 5];
-        
-        for i in range(subar.size, subar.size + supar.size):
-            CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",eps=[supar[i - subar.size]],show_transport=1)
-            CEAarray = CEAstring.split()
-            j = 1
-            while CEAarray[j]!= 'P,': j = j + 1; 
-            self.P[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'T,': j = j + 1; 
-            self.T[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'RHO,': j = j + 1; 
-            self.density[i] = float(CEAarray[j + 5].replace('-','e-')) * 1000;
-            while CEAarray[j]!= 'M,': j = j + 1; 
-            self.mw[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'Cp,': j = j + 1; 
-            self.Cp[i] = float(CEAarray[j + 5]) * 4186.8;
-            while CEAarray[j]!= 'GAMMAs': j = j + 1; 
-            self.gamma[i] = CEAarray[j + 4];
-            while CEAarray[j]!= 'SON': j = j + 1; 
-            self.sonvel[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'MACH': j = j + 1; 
-            self.M[i] = CEAarray[j + 5];
-            while CEAarray[j]!= 'PRANDTL': j = j + 1; 
-            self.pr[i] = CEAarray[j + 5];
-
-        #Finding mach number, https://kyleniemeyer.github.io/gas-dynamics-notes/compressible-flows/isentropic.html#equation-eq-area-ratio-loss
-        def area_function(mach, area, gamma):
-
-            area_ratio = area / self.At
-            if mach == 0:
-                mach = 0.000001
-            return (
-                area_ratio - (
-                    (1.0/mach) * ((1 + 0.5*(gamma-1)*mach*mach) /
-                    ((gamma + 1)/2))**((gamma+1) / (2*(gamma-1)))
-                    )
-                )
-
-        self.M = np.zeros(self.points)
-        self.T = np.zeros(self.points)
         self.density = np.zeros(self.points)
+        self.Cp = np.zeros(self.points)
+        self.k = np.zeros(self.points)
+        self.visc = np.zeros(self.points)
+        
+
         self.hg1 = np.zeros(self.points)
         self.hg2 = np.zeros(self.points)
         self.hg3 = np.zeros(self.points)
         self.stag_recovery = np.zeros(self.points)
-        #self.density = np.zeros(self.points)
-
-        #Cv = self.Cp_c - self.Rt
         rt = np.sqrt(self.At / np.pi)
 
-        for i in range(0,self.points):
-            if i < x_throat:
-                gamma = self.gt
-            else:
-                gamma = lininterp(i, x_throat, self.points, self.gt, self.ge)
 
-            area = np.pi * self.r[i] * self.r[i]
-            if i == x_throat:
-                M = 1
-            elif i < x_throat:
-                M = root_scalar(area_function, args=(area, gamma), bracket=[0, 1]).root
-            else:
-                M = root_scalar(area_function, args=(area, gamma), bracket=[1, 10]).root
-            self.M[i] = M
-
-            #T = self.Tc - self.mdot * self.mdot / (2 * Cv * self.density_c * self.density_c * area * area) * (1 + 0.5 * (self.gt - 1) * M * M)**(2 / (self.gt - 1))
-            T = self.Tc / (1 + 0.5 * (gamma - 1) * M*M)
-            self.T[i] = T
-            density = self.density_c * (1 + 0.5 * (gamma - 1) * M*M)**(1/(gamma - 1))
-            self.density[i] = density
-            correction_factor = 1 / ((0.5 * T / self.Tc * (1 + 0.5 * (gamma - 1) * M**2)+0.5)**0.68 * (1 + 0.5 * (gamma - 1) * M**2)**0.12)
-
+        def extractData(skip_index, lookfor_string, skip_times=0):
+            j = 100
+            for i in range(skip_times + 1):
+                j = j + 1
+                while CEAarray[j]!=lookfor_string:
+                    j = j + 1;
+            return CEAarray[j + skip_index]
+        for i in range(self.points):
 
             r = self.r[i]
-            Cp = self.Cp_c
-            visc = self.visc
-            pr = self.pr
+            area = r*r * np.pi
+
+
+            if i <= x_throat:
+                CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",subar=ar[i], show_transport=1)
+            else:
+               CEAstring = self.unitless_cea.get_full_cea_output(Pc=self.Pc, MR=self.MR, short_output=1, pc_units="bar",eps=ar[i],show_transport=1)
+            CEAarray = CEAstring.split()
+            #print(CEAarray)
+            P =         float(extractData(5, 'P,'))
+            T =         float(extractData(5, 'T,'))
+            mw =        float(extractData(5, 'M,'))
+            gamma =     float(extractData(4, 'GAMMAs'))
+            sonvel=     float(extractData(5, 'SON'))
+            M =         float(extractData(5, 'MACH'))
+            pr =        float(extractData(5, 'PRANDTL'))
+            density =   float(extractData(5, 'RHO,').replace('-','e-')) * 1000
+            Cp =        float(extractData(5, 'Cp,')) * 4186.8
+            k =         float(extractData(4, 'CONDUCTIVITY', 1)) * 0.4184
+            visc =      float(extractData(4, 'VISC,MILLIPOISE')) * 0.0001
+
+            self.P[i] = P
+            self.T[i] = T
+            self.mw[i] = mw
+            self.gamma[i] = gamma
+            self.sonvel[i] = sonvel
+            self.M[i] = M
+            self.pr[i] = pr
+            self.density[i] = density
+            self.Cp[i] = Cp
+            self.k[i] = k
+            self.visc[i] = visc
+
+            correction_factor = 1 / ((0.5 * T / self.Tc * (1 + 0.5 * (gamma - 1) * M**2)+0.5)**0.68 * (1 + 0.5 * (gamma - 1) * M**2)**0.12)
+
 
             self.stag_recovery[i] = (1 + 0.5*(gamma - 1)*M**2*pr**0.33)
 
@@ -321,7 +277,7 @@ class RocketEngine:
             bmDt = np.sqrt(4 * self.At / np.pi)
             bmcurv = (1.5 * rt + 0.382 * rt) * 0.5
             bmCp = Cp
-            bmvisc = Q_(visc, ureg.lbf * ureg.second/ (ureg.inch ** 2)).to(ureg.pascal * ureg.second).magnitude
+            bmvisc = visc
             
 
             bPc = Q_(self.Pc, ureg.bar).to('psi')
@@ -329,16 +285,20 @@ class RocketEngine:
             bDt = Q_(np.sqrt(4 * self.At / np.pi), ureg.meter).to('inch')
             bcurv = Q_((1.5 * rt + 0.382 * rt) * 0.5, ureg.meter).to("inch")
             bCp = Q_(Cp, ureg.joule / (ureg.kilogram * ureg.degK)).to('Btu / (lb * degR)')
-            bvisc = Q_(visc, ureg.lbf * ureg.second/ (ureg.inch ** 2))
+            bvisc = Q_(visc, ureg.pascal * ureg.second).to('lbf * second / inch**2')
             bg = Q_(9.81, ureg.meter / ureg.second**2).to('feet / second**2')
             bAtA = self.At / area
+    
+            
+            
+            
             self.hg1[i] = Q_((0.026 / bDt**0.2 * (bvisc**0.2 * bCp / pr**0.6) * (bPc * bg / bcstar)**0.8 * (bDt / bcurv)**0.1 * bAtA**0.9 * correction_factor).magnitude, "Btu / (inch ** 2 * second * degR) ").to("W / (m**2 * degK)").magnitude
-            #Adami
+            self.hg2[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor
+            
             R = self.Rt
             Z = np.pi * self.r[0]**2 / (2 * np.pi * self.r[0] * self.x[-1])
-            self.hg2[i] = Z * self.mdot / (2 * area) * Cp * visc**0.3 * pr **(2/3)
+            self.hg3[i] = Z * self.mdot / (2 * area) * Cp * visc**0.3 * pr **(2/3)
             
-            self.hg3[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor
         
             self.hc = np.zeros(self.points)
         self.a = np.zeros(self.points)
@@ -382,14 +342,15 @@ class RocketEngine:
             T_inf = self.T[i]
             stag_recovery = self.stag_recovery[i]
             Taw = T_inf * 0.923
-            hg = self.hg1[i]
+            hg = self.hg2[i] * 5/7
 
             a = self.a[i]
             A = self.A[i]
             per = self.per[i]
 
-            coolant = Mixture([FluidsList.Water, FluidsList.Methanol], [0.1, 99.9]).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
-            coolant = Fluid(FluidsList.Methanol).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
+            
+            #coolant = Fluid(FluidsList.Methanol).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
+            coolant = Mixture([FluidsList.Water, FluidsList.Methanol], [10, 90]).with_state(Input.pressure(Pco_i), Input.temperature(Tco_i-275.15))
 
             k = coolant.conductivity
             density = coolant.density
@@ -406,7 +367,7 @@ class RocketEngine:
             for j in range(0, 10):
                 hc = 0.023 * k / Dh * (density * velocity * Dh / viscosity)**0.8 * pr ** 0.4 * (Twc / Tco_i)**-0.3
                 H = 1 / (1 / hg + self.h / self.metal.k + 1 / hc)
-                #H = 1 / (1 / hg + 0.0001/1 + channel.h / metal.k + 1 / hc)
+                H = 1 / (1 / hg + 0.00005/1 + self.h / self.metal.k + 1 / hc)
                 q = H * (Taw - Tco_i)
                 Twc = Tco_i + q / hc
 
@@ -561,10 +522,54 @@ def displaysim(showtext):
   plt.savefig("output")
 
 
+def displaysim2(showtext):
+  if showtext:
+    print(f'Mass flux (kg/s) = {thanos.mdot}')
+    print(f'Throat      (mm) = {thanos.throat}')
+    print(f'Exit        (mm) = {thanos.exit}')
+    print(f'Cylinder r  (mm) = {thanos.rc}')
+    print(f'Parabola    (mm) = {thanos.parabola_p1}')
+    print(f'ISP         (mm) = {thanos.isp}')
+    print(f'CR         (mm) = {thanos.CR}')
+
+  fig, ax = plt.subplots(1, 1, sharey=True, figsize=[10,7])
+
+  color = 'tab:gray'
+  ax.set_xlabel('position (m)')
+  ax.set_ylabel('chamber radius (m)', color=color)
+  ax.plot(thanos.x, thanos.r, color=color)
+  ax.tick_params(axis='y', labelcolor=color)
+  ax.set_ylim(0, 0.14)
+  
+  color = 'tab:red'
+  ax00_2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
+  ax00_2.set_ylabel('Temperature', color=color)  # we already handled the x-label with ax1
+  ax00_2.plot(thanos.x, thanos.T, color=color)
+  ax00_2.spines['right'].set_position(('outward', 0))
+  ax00_2.tick_params(axis='y', labelcolor=color)
+  
+  color = 'tab:blue'
+  ax00_2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
+  ax00_2.set_ylabel('Mach Number', color=color)  # we already handled the x-label with ax1
+  ax00_2.plot(thanos.x, thanos.M, color=color)
+  ax00_2.spines['right'].set_position(('outward', 60))
+  ax00_2.tick_params(axis='y', labelcolor=color)
+  
+  color = 'tab:green'
+  ax00_2 = ax.twinx()  # instantiate a second axes that shares the same x-axis
+  ax00_2.set_ylabel('Viscosity', color=color)  # we already handled the x-label with ax1
+  ax00_2.plot(thanos.x, thanos.visc , color=color)
+  ax00_2.spines['right'].set_position(('outward', 120))
+  ax00_2.tick_params(axis='y', labelcolor=color)
+
+  fig.tight_layout()
+  ax.grid()
+
+
 fuelmix_str = """
 fuel CH3OH(L)   C 1 H 4 O 1
-h,cal=-57040.0      t(k)=298.15       wt%=99.9
-oxid water H 2 O 1  wt%=0.1
+h,cal=-57040.0      t(k)=298.15       wt%=90.0
+oxid water H 2 O 1  wt%=10.0
 h,cal=-68308.  t(k)=298.15 rho,g/cc = 0.9998
 """
 add_new_fuel( 'fuelmix', fuelmix_str )
@@ -572,11 +577,11 @@ add_new_fuel( 'fuelmix', fuelmix_str )
 
 thanos = RocketEngine(
     oxName = "N2O",
-    fuelName = "Methanol",
+    fuelName = "fuelmix",
     thrust = 4000,
     Pc = 20,
     Pe = 0.85,
-    MR = 2.5, #thats O/F
+    MR = 2.2, #thats O/F
     metal = aluminium)
 
 thanos.defineGeometry(
@@ -589,12 +594,12 @@ thanos.defineGeometry(
 )
 
 thanos.defineChannels(
-    h=0.0015,
-    hc0=0.0015,
+    h=0.001,
+    hc0=0.001,
     hcmultiplier=np.ones(100),
-    a0=0.004,
+    a0=0.00475,
     N_channels=40,
-    helical_angle=0
+    helical_angle=30
 )
 thanos.runSim()
 displaysim(True)
@@ -623,5 +628,40 @@ displaysim(True)
 # plt.ylabel('Stress (MPa)')
 # plt.legend()
 # plt.show()
+# fig, ax = plt.subplots(1, 1)
+# I = np.linspace(0.0001, 0.002, 10)
+# yieldstress = np.zeros(10)
+# totalstress = np.zeros(10)
+# for i, value in enumerate(I):
+#     thanos.h = value
+#     thanos.runSim()
+#     yieldstress[i] = thanos.metal.yield_stress(thanos.Twg[thanos.x_throat])
+#     totalstress[i] = thanos.stress_total[thanos.x_throat]
+# plt.plot(I, yieldstress * 1e-6 - totalstress * 1e-6, color='green')
+#     #plt.plot(I, totalstress * 1e-6, color='blue', label='Max stress at throat')
+# plt.xlabel('Wall thickness')
+# plt.ylabel('Stress (MPa)')
+# plt.legend()
+# plt.show()
 
-# '''
+# fig, ax = plt.subplots(1, 2, figsize=[20, 7])
+# I = np.linspace(2, 4, 10)
+# yieldstress = np.zeros(10)
+# totalstress = np.zeros(10)
+# isp = np.zeros(10)
+# for i, value in enumerate(I):
+#     thanos.MR = value
+#     thanos.runSim()
+#     yieldstress[i] = thanos.metal.yield_stress(thanos.Twg[thanos.x_throat])
+#     totalstress[i] = thanos.stress_total[thanos.x_throat]
+#     isp[i] = thanos.isp[0]
+# ax[0].plot(I, yieldstress * 1e-6 - totalstress * 1e-6, color='green')
+# ax[1].plot(I, isp, color='blue')
+
+#     #plt.plot(I, totalstress * 1e-6, color='blue', label='Max stress at throat')
+# ax[0].set_xlabel('O/F')
+# ax[0].set_ylabel('Stress (MPa)')
+# ax[1].set_xlabel('O/F')
+# ax[1].set_ylabel('ISP (seconds)')
+# plt.legend()
+# plt.show()
