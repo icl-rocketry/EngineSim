@@ -342,7 +342,7 @@ class RocketEngine:
             T_inf = self.T[i]
             stag_recovery = self.stag_recovery[i]
             Taw = T_inf * 0.923
-            hg = self.hg2[i] * 5/7
+            hg = self.hg2[i] * 0.3
 
             a = self.a[i]
             A = self.A[i]
@@ -367,7 +367,7 @@ class RocketEngine:
             for j in range(0, 10):
                 hc = 0.023 * k / Dh * (density * velocity * Dh / viscosity)**0.8 * pr ** 0.4 * (Twc / Tco_i)**-0.3
                 H = 1 / (1 / hg + self.h / self.metal.k + 1 / hc)
-                H = 1 / (1 / hg + 0.00005/1 + self.h / self.metal.k + 1 / hc)
+                #H = 1 / (1 / hg + 0.00005/1 + self.h / self.metal.k + 1 / hc)
                 q = H * (Taw - Tco_i)
                 Twc = Tco_i + q / hc
 
@@ -577,15 +577,15 @@ add_new_fuel( 'fuelmix', fuelmix_str )
 
 thanos = RocketEngine(
     oxName = "N2O",
-    fuelName = "fuelmix",
+    fuelName = "Methanol",
     thrust = 4000,
     Pc = 20,
     Pe = 0.85,
-    MR = 2.2, #thats O/F
+    MR = 2.5, #thats O/F
     metal = aluminium)
 
 thanos.defineGeometry(
-    radius_cylinder=0.05,
+    radius_cylinder=0.048,
     chamber_length=0.15,
     points=100,
     theta_n=22,
@@ -594,8 +594,8 @@ thanos.defineGeometry(
 )
 
 thanos.defineChannels(
-    h=0.001,
-    hc0=0.001,
+    h=0.0015,
+    hc0=0.0015,
     hcmultiplier=np.ones(100),
     a0=0.00475,
     N_channels=40,
@@ -604,6 +604,12 @@ thanos.defineChannels(
 thanos.runSim()
 displaysim(True)
 
+hc = thanos.hc
+x = thanos.x
+r = thanos.r
+np.save('r',r)
+np.save('z',x)
+np.save('hc',hc)
 
 #thanos.fuelName = "Ethanol"
 #thanos.runSim()
