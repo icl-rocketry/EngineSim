@@ -203,6 +203,8 @@ class RocketEngine:
         
         ar = self.r ** 2 * np.pi / self.At
         
+        self.Lstar = sum(self.r[0:x_throat] ** 2 * np.pi * (self.x[1] - self.x[0])) / self.At
+        
         self.P = np.zeros(self.points)
         self.T = np.zeros(self.points)
         self.mw = np.zeros(self.points)
@@ -334,6 +336,8 @@ class RocketEngine:
         self.stress_temperature2 = np.zeros(self.points)
         self.stress_total = np.zeros(self.points)
         self.Pco = np.zeros(self.points)
+        self.viscosity_co = np.zeros(self.points)
+        self.density_co = np.zeros(self.points)        
         Tco_i = 300
         Pco_i = 40e5
 
@@ -357,6 +361,9 @@ class RocketEngine:
             pr = coolant.prandtl
             viscosity = coolant.dynamic_viscosity
             cp = coolant.specific_heat
+            
+            self.viscosity_co[i] = viscosity
+            self.density_co[i] = density
 
             Dh = 4 * A / per
             velocity = mdot/(A * density * np.cos(self.helical_angle * np.pi / 180))
@@ -490,7 +497,7 @@ def displaysim(showtext):
   line02_2, = ax02_2.plot(thanos.x, thanos.metal.yield_stress(thanos.Twg) * 1e-6, color='tab:green', label='Yield Stress')
 
   #ax1.set_aspect('equal', adjustable='box')
-  fig.tight_layout()  # otherwise the right y-label is slightly clipped
+  #fig.tight_layout()  # otherwise the right y-label is slightly clipped
   #ax3.set_yticks(np.arange(0, 3000, 500))
   ax[0,2].grid()
   ax02_2.legend(handles=[line02_1, line02_2, line02_3], loc='upper left')
@@ -516,7 +523,7 @@ def displaysim(showtext):
   line01_2, = ax10_3.plot(thanos.x, thanos.Pco * 1e-5, color=color)
 
   #ax1.set_aspect('equal', adjustable='box')
-  fig.tight_layout()  # otherwise the right y-label is slightly clipped
+  #fig.tight_layout()  # otherwise the right y-label is slightly clipped
   #ax3.set_yticks(np.arange(0, 3000, 500))
   ax[1,0].grid()
   plt.savefig("output")
@@ -530,7 +537,8 @@ def displaysim2(showtext):
     print(f'Cylinder r  (mm) = {thanos.rc}')
     print(f'Parabola    (mm) = {thanos.parabola_p1}')
     print(f'ISP         (mm) = {thanos.isp}')
-    print(f'CR         (mm) = {thanos.CR}')
+    print(f'CR          (mm) = {thanos.CR}')
+    print(f'L*          (mm) = {thanos.Lstar}')
 
   fig, ax = plt.subplots(1, 1, sharey=True, figsize=[10,7])
 
@@ -562,7 +570,7 @@ def displaysim2(showtext):
   ax00_2.spines['right'].set_position(('outward', 120))
   ax00_2.tick_params(axis='y', labelcolor=color)
 
-  fig.tight_layout()
+  #fig.tight_layout()
   ax.grid()
 
 
@@ -585,7 +593,7 @@ thanos = RocketEngine(
     metal = aluminium)
 
 thanos.defineGeometry(
-    radius_cylinder=0.048,
+    radius_cylinder=0.046,
     chamber_length=0.15,
     points=100,
     theta_n=22,
