@@ -613,11 +613,15 @@ thanos.runSim()
 displaysim(True)
 
 hc = thanos.hc
+a = thanos.a
 x = thanos.x
 r = thanos.r
+h = thanos.h
+np.save('h',h)
 np.save('r',r)
 np.save('z',x)
 np.save('hc',hc)
+np.save('a',a)
 
 #thanos.fuelName = "Ethanol"
 #thanos.runSim()
