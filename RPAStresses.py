@@ -32,13 +32,15 @@ def calculate_stress_t_fornow(t_w, E, a, q, v, k):
 a = 27 * 10 ** -6
 k = 100
 v = 0.33
-t_w = 0.0015
+t_w = 0.0008
 
-file_path = 'Thanos_RPA_calcs.txt' # name of the text file
+file_path = 'Thanos_RPA_calcs2.txt' # name of the text file
 
 
 pos = []
 rad = []
+twc = []
+twg = []
 yieldstress = []
 tempstress_t = []
 tempstress_l = []
@@ -63,7 +65,10 @@ with open(file_path, 'r') as file:
         stress_t = calculate_stress_t_fornow(t_w, E, a, q, v, k)
         stress_t2 = E * a * (float(line_array[6]) - float(line_array[8]))
         stress_p = 35e5 * 0.5 * (0.00475 * float(line_array[1]) / 51.1600 / t_w) ** 2
-        print(float(line_array[6]) - float(line_array[8]))
+        print((0.00475 * float(line_array[1]) / 51.1600))
+        twg.append(float(line_array[6]))
+        twc.append(float(line_array[8]))
+        #print(float(line_array[6]) - float(line_array[8]))
         line_array.append(stress_t)
         
         pos.append(float(line_array[0]) / 1000)
@@ -82,10 +87,10 @@ with open(file_path, 'r') as file:
 #for array in data_arrays:
 #    print(array)
 #print(line_array)
-fig, ax2 = plt.subplots(1, 1, sharey=True)
-#ax.plot(pos, rad)
-#ax.set_ylabel("Chamber Radius (m)")
-#ax2 = ax.twinx()
+fig, ax = plt.subplots(1, 1, sharey=True)
+ax.plot(pos, rad)
+ax.set_ylabel("Chamber Radius (m)")
+ax2 = ax.twinx()
 ax2.plot(pos, yieldstress, color="tab:green"    , label="Yield stress")
 ax2.plot(pos, tempstress_t, color="tab:pink"    , label="Tangential Thermal")
 ax2.plot(pos, tempstress_l, color="tab:purple"  , label="Longitudinal Thermal")
@@ -93,3 +98,8 @@ ax2.plot(pos, tempstress_p, color="tab:orange"  , label="Tangential Pressure")
 ax2.plot(pos, von_mises, color="tab:red"        , label="Von-Mises")
 ax2.set_ylabel("Stress (MPA)")
 ax2.legend()
+
+fig, ax = plt.subplots(1, 1, sharey=True)
+ax.plot(pos, twg)
+ax.plot(pos, twc)
+ax.grid()
