@@ -1,6 +1,28 @@
 # Plz Delet all the titles for the text file before using this program
 import numpy as np
 import matplotlib.pyplot as plt
+import re
+
+with open('Thanos_RPA.txt', 'r') as input_file:
+    lines = input_file.readlines()
+
+lines = lines[8:]
+filtered_lines = [line for line in lines if not line.startswith('#')]
+
+# Define a regular expression to match numbers
+number_pattern = re.compile(r'[-+]?\d*\.\d+|\d+')
+
+filtered_lines = []
+for line in lines:
+    # Extract numerical values from the line using the regular expression
+    numbers = number_pattern.findall(line)
+    # Join the numbers into a comma-separated string and add it to the filtered lines
+    filtered_line = (' '.join(numbers) + '\n')
+    if filtered_line.strip():
+        filtered_lines.append(filtered_line)
+
+with open('Thanos_Filtered.txt', 'w') as output_file:
+    output_file.writelines(filtered_lines)
 
 x = np.array([25, 50, 100, 150, 200, 250, 300, 350, 400])
 y = np.array([77.6, 75.5, 72.8, 63.2, 60, 55, 45, 37, 28]) * 1e9
@@ -17,24 +39,14 @@ A2 = float(coefficients2[0])
 B2 = float(coefficients2[1])
 C2 = float(coefficients2[2])
 
-def calculate_stress_p(P_l, P_g, w, t_w, E, a, q, v, k):
-    stress_t = 0.5 * (P_l - P_g) * ((w - t_w) ** 2)
-    return stress_t
 
-def calculate_stress_l(E, a, delta_T):
-    stress_l = E * a * delta_T
-    return stress_l
-
-def calculate_stress_t_fornow(t_w, E, a, q, v, k):
-    stress_t = (E * a * q * t_w) / (2 * (1 - v) * k)
-    return stress_t
 
 a = 27 * 10 ** -6
 k = 100
 v = 0.33
-t_w = 0.0008
+t_w = 0.00075
 
-file_path = 'Thanos_RPA_calcs2.txt' # name of the text file
+file_path = 'Thanos_Filtered.txt' # name of the text file
 
 
 pos = []
@@ -46,6 +58,7 @@ tempstress_t = []
 tempstress_l = []
 tempstress_p = []
 von_mises = []
+a_channel = []
 
 data_arrays = []
 
@@ -54,6 +67,7 @@ with open(file_path, 'r') as file:
         line_array = line.split()
         line_array = [float(item) for item in line_array]
         data_arrays.append(line_array)
+
         T = float(line_array[6] - 273.15)
         if 0 < T < 400:
             E = A * (T ** 2) + B * T + C
@@ -62,10 +76,10 @@ with open(file_path, 'r') as file:
             E = 0
             Ys = 0
         q = float(line_array[5]) * 1000
-        stress_t = calculate_stress_t_fornow(t_w, E, a, q, v, k)
+        stress_t = (E * a * q * t_w) / (2 * (1 - v) * k)
         stress_t2 = E * a * (float(line_array[6]) - float(line_array[8]))
-        stress_p = 35e5 * 0.5 * (0.00475 * float(line_array[1]) / 51.1600 / t_w) ** 2
-        print((0.00475 * float(line_array[1]) / 51.1600))
+        stress_p = 35e5 * 0.5 * (0.00475 * float(line_array[1]) / 47.13 / t_w) ** 2
+        a_channel.append(0.00475 * float(line_array[1]) / 47.13)
         twg.append(float(line_array[6]))
         twc.append(float(line_array[8]))
         #print(float(line_array[6]) - float(line_array[8]))
@@ -87,19 +101,23 @@ with open(file_path, 'r') as file:
 #for array in data_arrays:
 #    print(array)
 #print(line_array)
-fig, ax = plt.subplots(1, 1, sharey=True)
-ax.plot(pos, rad)
-ax.set_ylabel("Chamber Radius (m)")
-ax2 = ax.twinx()
+fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+#ax.plot(pos, rad)
+ax[0].set_ylabel("Chamber Radius (m)")
+ax2 = ax[0]
 ax2.plot(pos, yieldstress, color="tab:green"    , label="Yield stress")
 ax2.plot(pos, tempstress_t, color="tab:pink"    , label="Tangential Thermal")
 ax2.plot(pos, tempstress_l, color="tab:purple"  , label="Longitudinal Thermal")
 ax2.plot(pos, tempstress_p, color="tab:orange"  , label="Tangential Pressure")
 ax2.plot(pos, von_mises, color="tab:red"        , label="Von-Mises")
 ax2.set_ylabel("Stress (MPA)")
+ax2.set_xlabel("Wall thickness: 0.75mm, Angle: 30, OF: 2.5")
+ax[0].grid()
 ax2.legend()
+ax3 = ax[1]
+ax3.plot(pos, twg, label="twg")
+ax3.plot(pos, twc, label='twc')
+ax3.legend()
+ax3.grid()
 
-fig, ax = plt.subplots(1, 1, sharey=True)
-ax.plot(pos, twg)
-ax.plot(pos, twc)
-ax.grid()
+print(a_channel)

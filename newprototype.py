@@ -423,7 +423,8 @@ class RocketEngine:
 
             dx = self.x[1] - self.x[0]
             Tco_i = Tco_i + 1 / (mdot * cp) * q * (2 * np.pi * r * dx / self.N_channels)
-            Pco_i = Pco_i - 32 * cf * dx * mdot **2 / (density * np.pi**2 * Dh**5)
+            #Pco_i = Pco_i - 32 * cf * dx * mdot **2 / (density * np.pi**2 * Dh**5)
+            Pco_i = Pco_i - 4 * cf * dx / Dh * density * velocity ** 2
 
 
 def displaysim(showtext):
@@ -602,7 +603,7 @@ thanos.defineGeometry(
 )
 
 thanos.defineChannels(
-    h=0.0015,
+    h=0.008,
     hc0=0.0015,
     hcmultiplier=np.ones(100),
     a0=0.00475,
