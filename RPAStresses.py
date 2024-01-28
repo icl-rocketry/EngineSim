@@ -53,12 +53,15 @@ pos = []
 rad = []
 twc = []
 twg = []
+tc = []
 yieldstress = []
 tempstress_t = []
 tempstress_l = []
 tempstress_p = []
 von_mises = []
 a_channel = []
+
+qtotal = []
 
 data_arrays = []
 
@@ -80,8 +83,11 @@ with open(file_path, 'r') as file:
         stress_t2 = E * a * (float(line_array[6]) - float(line_array[8]))
         stress_p = 35e5 * 0.5 * (0.00475 * float(line_array[1]) / 47.13 / t_w) ** 2
         a_channel.append(0.00475 * float(line_array[1]) / 47.13)
+        
+        qtotal.append(float(line_array[5]))
         twg.append(float(line_array[6]))
         twc.append(float(line_array[8]))
+        tc.append(float(line_array[9]))
         #print(float(line_array[6]) - float(line_array[8]))
         line_array.append(stress_t)
         
@@ -111,7 +117,7 @@ ax2.plot(pos, tempstress_l, color="tab:purple"  , label="Longitudinal Thermal")
 ax2.plot(pos, tempstress_p, color="tab:orange"  , label="Tangential Pressure")
 ax2.plot(pos, von_mises, color="tab:red"        , label="Von-Mises")
 ax2.set_ylabel("Stress (MPA)")
-ax2.set_xlabel("Wall thickness: 0.75mm, Angle: 30, OF: 2.5")
+ax2.set_xlabel("Film cooling = 20%")
 ax[0].grid()
 ax2.legend()
 ax3 = ax[1]
@@ -120,4 +126,8 @@ ax3.plot(pos, twc, label='twc')
 ax3.legend()
 ax3.grid()
 
-print(a_channel)
+#total_power = 0
+#for i, q_i in enumerate(qtotal):
+#    total_power += q_i * 2 * rad[i] * np.pi * (pos[1] - pos[0]) * 1000
+#print(total_power)
+#print((tc[0] - tc[-1]) * 2530)
