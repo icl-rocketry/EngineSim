@@ -295,7 +295,7 @@ class RocketEngine:
             
             
             self.hg1[i] = Q_((0.026 / bDt**0.2 * (bvisc**0.2 * bCp / pr**0.6) * (bPc * bg / bcstar)**0.8 * (bDt / bcurv)**0.1 * bAtA**0.9 * correction_factor).magnitude, "Btu / (inch ** 2 * second * degR) ").to("W / (m**2 * degK)").magnitude
-            self.hg2[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor
+            self.hg2[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor * 0.2
             
             R = self.Rt
             Z = np.pi * self.r[0]**2 / (2 * np.pi * self.r[0] * self.x[-1])
@@ -603,12 +603,12 @@ thanos.defineGeometry(
 )
 
 thanos.defineChannels(
-    h=0.008,
+    h=0.01,
     hc0=0.0015,
     hcmultiplier=np.ones(100),
     a0=0.00475,
     N_channels=40,
-    helical_angle=30
+    helical_angle=0
 )
 thanos.runSim()
 displaysim(True)
