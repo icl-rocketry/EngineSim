@@ -106,31 +106,55 @@ class RocketEngine:
         
 thanos = RocketEngine(
     oxName = "N2O",
-    fuelName = "Methanol",
-    thrust = 9,
+    fuelName = "fuelmix",
     Pc = 20,
     Pe = 0.85,
-    MR = 3.5, #thats O/F
-    radius_cylinder=0.007,
-    length_chamber=0.02,
+    MR = 1.3, #thats O/F
+    radius_cylinder=0.046,
+    length_chamber=0.15,
     cdo = 0.4,
     cdf = 0.7,
     Pi = 30,
     density_o = 800,
     density_f = 792
 )
-thanos.runSim()
-print(f'Mass flux (kg/s) = {thanos.mdot}   (g/s) = {thanos.mdot * 1000}')
-print()
-print(f'Fuel flux (kg/s) = {thanos.fdot}   (g/s) = {thanos.fdot * 1000}')
-print(f'Fuel dia    (mm) = {thanos.df * 1000}')
-print()
-print(f'Ox flux   (kg/s) = {thanos.odot}   (g/s) = {thanos.odot * 1000}')
-print(f'Ox dia      (mm) = {thanos.do * 1000}')
-print()
-print(f'Throat Dia  (mm) = {thanos.dt * 1000}')
-print(f'Exit Dia    (mm) = {thanos.de * 1000}')
-print()
-print(f'ISP         (mm) = {thanos.isp}')
-print(f'CR          (mm) = {thanos.CR}')
-print(f'L*          (mm) = {thanos.lstar}')
+fig, ax = plt.subplots(1, 2, figsize=(20, 7))
+n_it = 10
+waterlist = np.linspace(0, 20, n_it)
+oxflux = np.zeros(n_it)
+fuelflux = np.zeros(n_it)
+duration = np.zeros(n_it)
+for i, waterperc in enumerate(waterlist):
+    fuelmix_str = (
+    f'fuel CH3OH(L)   C 1 H 4 O 1 \n'
+    f'h,cal=-57040.0      t(k)=298.15       wt%={100 - waterperc} \n'
+    f'oxid water H 2 O 1  wt%={waterperc} \n'
+    f'h,cal=-68308.  t(k)=298.15 rho,g/cc = 0.9998 \n'
+    )
+    add_new_fuel( 'fuelmix', fuelmix_str )
+    
+    thanos.runSim()
+    oxflux[i] = thanos.odot
+    fuelflux[i] = thanos.fdot * 1.2
+    
+    coolantdensity = waterperc / 100 * 1000 + (100 - waterperc) / 100 * 800
+    duration[i] = 8000 / coolantdensity / fuelflux[i]
+ax[0].plot(waterlist, fuelflux)
+ax[0].plot(waterlist, oxflux)
+ax[1].plot(waterlist, duration)
+    
+# print(f'Mass flux (kg/s) = {thanos.mdot}   (g/s) = {thanos.mdot * 1000}')
+# print()
+# print(f'Fuel flux (kg/s) = {thanos.fdot}   (g/s) = {thanos.fdot * 1000}')
+# print(f'Fuel Total(kg/s) = {thanos.fdot*1.2}   (g/s) = {thanos.fdot * 1000*1.2}')
+# print(f'Fuel dia    (mm) = {thanos.df * 1000}')
+# print()
+# print(f'Ox flux   (kg/s) = {thanos.odot}   (g/s) = {thanos.odot * 1000}')
+# print(f'Ox dia      (mm) = {thanos.do * 1000}')
+# print()
+# print(f'Throat Dia  (mm) = {thanos.dt * 1000}')
+# print(f'Exit Dia    (mm) = {thanos.de * 1000}')
+# print()
+# print(f'ISP         (mm) = {thanos.isp}')
+# print(f'CR          (mm) = {thanos.CR}')
+# print(f'L*          (mm) = {thanos.lstar}')

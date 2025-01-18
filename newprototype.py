@@ -220,7 +220,6 @@ class RocketEngine:
 
         self.hg1 = np.zeros(self.points)
         self.hg2 = np.zeros(self.points)
-        self.hg3 = np.zeros(self.points)
         self.stag_recovery = np.zeros(self.points)
         rt = np.sqrt(self.At / np.pi)
 
@@ -294,12 +293,11 @@ class RocketEngine:
             
             
             
-            self.hg1[i] = Q_((0.026 / bDt**0.2 * (bvisc**0.2 * bCp / pr**0.6) * (bPc * bg / bcstar)**0.8 * (bDt / bcurv)**0.1 * bAtA**0.9 * correction_factor).magnitude, "Btu / (inch ** 2 * second * degR) ").to("W / (m**2 * degK)").magnitude
-            self.hg2[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor * 0.2
+            self.hg1[i] = 0.026 / bmDt**0.2 * (bmvisc**0.2 * bmCp / pr**0.6) * (bmPc / bmcstar)**0.8 * (bmDt / bmcurv)**0.1 * bAtA**0.9 * correction_factor
             
             R = self.Rt
             Z = np.pi * self.r[0]**2 / (2 * np.pi * self.r[0] * self.x[-1])
-            self.hg3[i] = Z * self.mdot / (2 * area) * Cp * visc**0.3 * pr **(2/3)
+            self.hg2[i] = Z * self.mdot / (2 * area) * Cp * visc**0.3 * pr **(2/3)
             
         
             self.hc = np.zeros(self.points)
@@ -328,7 +326,7 @@ class RocketEngine:
         self.Tco = np.zeros(self.points)
         self.velocity = np.zeros(self.points)
         self.hg = np.zeros(self.points)
-        #self.hc = np.zeros(self.points)
+        self.hc_thermal = np.zeros(self.points)
         self.hw = np.zeros(self.points)
         self.q = np.zeros(self.points)
         self.stress_pressure = np.zeros(self.points)
@@ -346,7 +344,7 @@ class RocketEngine:
             T_inf = self.T[i]
             stag_recovery = self.stag_recovery[i]
             Taw = T_inf * 0.923
-            hg = self.hg2[i] * 0.3
+            hg = self.hg2[i]
 
             a = self.a[i]
             A = self.A[i]
@@ -373,6 +371,7 @@ class RocketEngine:
             Twc = Tco_i + 100
             for j in range(0, 10):
                 hc = 0.023 * k / Dh * (density * velocity * Dh / viscosity)**0.8 * pr ** 0.4 * (Twc / Tco_i)**-0.3
+                self.hc_thermal[i] = hc
                 H = 1 / (1 / hg + self.h / self.metal.k + 1 / hc)
                 #H = 1 / (1 / hg + 0.00005/1 + self.h / self.metal.k + 1 / hc)
                 q = H * (Taw - Tco_i)
@@ -458,12 +457,11 @@ def displaysim(showtext):
   ax00_3.set_ylabel('hg', color=color)  # we already handled the x-label with ax1
   line00_1, = ax00_3.plot(thanos.x, thanos.hg1, color=color, label='Bartz')
   line00_2, = ax00_3.plot(thanos.x, thanos.hg2, color=color, label='Adami')
-  line00_3, = ax00_3.plot(thanos.x, thanos.hg3, color='tab:blue', label='Test')
   ax00_3.tick_params(axis='y', labelcolor=color)
   #ax00_3.set_yticks(np.arange(0, 3000, 500))
   fig.tight_layout()
   ax[0,0].grid()
-  ax00_3.legend(handles=[line00_1, line00_2, line00_3], loc='upper right')
+  ax00_3.legend(handles=[line00_1, line00_2], loc='upper right')
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------
   color = 'tab:gray'
   ax[0,1].set_xlabel('position (m)')
@@ -587,10 +585,10 @@ add_new_fuel( 'fuelmix', fuelmix_str )
 thanos = RocketEngine(
     oxName = "N2O",
     fuelName = "Methanol",
-    thrust = 4000,
+    thrust = 1500,
     Pc = 20,
-    Pe = 0.85,
-    MR = 2.5, #thats O/F
+    Pe = 1,
+    MR = 2.2, #thats O/F
     metal = aluminium)
 
 thanos.defineGeometry(
@@ -603,10 +601,10 @@ thanos.defineGeometry(
 )
 
 thanos.defineChannels(
-    h=0.01,
+    h=0.008,
     hc0=0.0015,
     hcmultiplier=np.ones(100),
-    a0=0.00475,
+    a0=0.003,
     N_channels=40,
     helical_angle=0
 )

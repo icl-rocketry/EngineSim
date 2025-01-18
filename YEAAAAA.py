@@ -10,5 +10,9 @@ import pandas as pd
 ureg = UnitRegistry()
 Q_ = ureg.Quantity
 
-for i in range(1e6, 40e6, 1e6):
-    Fluid(FluidsList.Methanol).with_state(Input.pressure(i), Input.temperature(Tco_i-275.15))
+pressures = np.linspace(1e5, 20e5, 100)
+densities = np.zeros(100)
+for i, pressure in enumerate(pressures:
+    fuel = Fluid(FluidsList.Methanol).with_state(Input.pressure(pressure), Input.temperature(5))
+    densities[i] = fuel.density
+plt.plot(pressures, densities)

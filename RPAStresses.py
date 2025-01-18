@@ -117,7 +117,7 @@ ax2.plot(pos, tempstress_l, color="tab:purple"  , label="Longitudinal Thermal")
 ax2.plot(pos, tempstress_p, color="tab:orange"  , label="Tangential Pressure")
 ax2.plot(pos, von_mises, color="tab:red"        , label="Von-Mises")
 ax2.set_ylabel("Stress (MPA)")
-ax2.set_xlabel("12 2.5")
+ax2.set_xlabel("20Bar 10%Film 3.3COF Bartz")
 ax[0].grid()
 ax2.legend()
 ax3 = ax[1]

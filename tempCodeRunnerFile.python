@@ -1,0 +1,45 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from thermo.chemical import Chemical
+from scipy.optimize import brentq  # For numerical root finding
+
+# Create a Chemical object for isopropanol
+ipa = Chemical("isopropanol")
+
+# Define pressure range from 1 bar to 50 bar (converted to Pascals)
+pressures_bar = np.linspace(1, 50, 100)  # Pressures in bar
+pressures_pa = pressures_bar * 1e5  # Convert bar to Pascals
+
+# Define a function to compute the difference between Psat and the given pressure
+def find_boiling_point(P_target):
+    """
+    Function to numerically find the boiling point (saturation temperature)
+    at a given target pressure.
+    """
+    def func(T):
+        ipa.T = T  # Set temperature
+        return ipa.Psat - P_target  # Difference between Psat and target pressure
+
+    # Solve for T such that Psat(T) == P_target using brentq
+    T_sat = brentq(func, 200, 400)  # Search within a reasonable temperature range (in Kelvin)
+    return T_sat
+
+
+# Calculate the boiling points over the pressure range
+boiling_points = []
+for P in pressures_pa:
+    try:
+        T_sat = find_boiling_point(P)  # Find boiling point (T_sat) at each pressure
+        boiling_points.append(T_sat - 273.15)  # Convert from Kelvin to Celsius
+    except ValueError:
+        boiling_points.append(None)  # Handle invalid cases
+
+# Plotting
+plt.figure(figsize=(12, 8))
+plt.plot(pressures_bar, boiling_points, label="Isopropanol Boiling Point")
+plt.xlabel("Pressure (bar)")
+plt.ylabel("Boiling Point (°C)")
+plt.title("Boiling Point of Isopropanol vs Pressure")
+plt.grid()
+plt.legend()
+plt.show()

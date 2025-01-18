@@ -110,7 +110,7 @@ thanos = RocketEngine(
     thrust = 4000,
     Pc = 20,
     Pe = 0.85,
-    MR = 3.5, #thats O/F
+    MR = 2.5, #thats O/F
     radius_cylinder=0.046,
     length_chamber=0.15,
     cdo = 0.4,
@@ -132,6 +132,7 @@ waterlist = np.linspace(0, 30, 5)
 cstarlist = np.zeros(n_1)
 cflist = np.zeros(n_1)
 templist = np.zeros(n_1)
+isplist = np.zeros(n_1)
 for j, waterperc in enumerate(waterlist):
     fuelmix_str = (
     f'fuel CH3OH(L)   C 1 H 4 O 1 \n'
@@ -146,6 +147,7 @@ for j, waterperc in enumerate(waterlist):
         cstarlist[i] = thanos.cstar
         cflist[i] = thanos.thrust / (thanos.Pc * 1e5 * thanos.At)
         templist[i] = thanos.Tc
+        isplist[i] = thanos.isp[0]
     poly = np.polyfit(MRlist, cstarlist, 2)
     ax[0,0].plot(MRlist, cstarlist, color=[0.2 + waterperc / 40, 0.2, 0.5] ,label=f'W%:{waterperc} | {newround(poly[0])}x^2 + {newround(poly[1])}x + {newround(poly[2])}')
     ax[0,0].plot(np.linspace(0.5,5,100), np.polyval(poly,np.linspace(0.5,5,100)),'--' , color=[0.2 + waterperc / 40, 0.2, 0.5])
@@ -157,15 +159,17 @@ for j, waterperc in enumerate(waterlist):
     ax[0,2].plot(MRlist, templist,color=[0.2 + waterperc / 40, 0.2, 0.5] , label=f'W%:{waterperc}')
     ax[0,2].set_xlabel("O/F")
     ax[0,2].set_ylabel("Chamber Temperature (K)")
+    ax[1,2].plot(MRlist, isplist,color=[0.2 + waterperc / 40, 0.2, 0.5] , label=f'W%:{waterperc}')
+    ax[1,2].set_xlabel("O/F")
+    ax[1,2].set_ylabel("ISP (s)")
 
 pclist = np.linspace(10, 25, 5)
 fuelmix_str = (
 f'fuel CH3OH(L)   C 1 H 4 O 1 \n'
-f'h,cal=-57040.0      t(k)=298.15       wt%=90 \n'
-f'oxid water H 2 O 1  wt%=10 \n'
+f'h,cal=-57040.0      t(k)=298.15       wt%=100 \n'
+f'oxid water H 2 O 1  wt%=0 \n'
 f'h,cal=-68308.  t(k)=298.15 rho,g/cc = 0.9998 \n'
 )
-isplist = np.zeros(n_1)
 add_new_fuel( 'fuelmix', fuelmix_str )
 for j, pc in enumerate(pclist):
     thanos.Pc = pc
@@ -181,9 +185,7 @@ for j, pc in enumerate(pclist):
     ax[1,1].plot(MRlist, isplist,color=[0.2 + pc / 40, 0.2, 0.5] , label=f'PC:{pc}')
     ax[1,1].set_xlabel("O/F (10% water)")
     ax[1,1].set_ylabel("ISP (s)")
-    ax[1,2].plot(MRlist, templist,color=[0.2 + pc / 40, 0.2, 0.5] , label=f'PC:{pc}')
-    ax[1,2].set_xlabel("O/F (10% water)")
-    ax[1,2].set_ylabel("Chamber Temperature (K)")
+
 ax[0,0].legend()
 ax[0,1].legend()
 ax[0,2].legend()
