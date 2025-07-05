@@ -1,0 +1,40 @@
+--------------------------------------------------
+Pc                   26.40      Bar
+Fuel Mdot            0.7710     kg/s
+Ox Mdot              1.9580     kg/s
+Thrust               4800.00    N
+Fuel Pressure        45.29      Bar
+Ox Pressure          34.01      Bar
+Fuel Feed Pressure   51.43      Bar
+
+Mdot                 2.7290     kg/s
+Mdot Core            2.5287     kg/s
+O/F                  2.5396
+O/F Core             3.4308
+Fuel Core Mdot       0.5707     kg/s
+Fuel Film Mdot       0.2003     kg/s
+
+ISP Theory           213.80     sec
+ISP Actual           179.30     sec
+ISP Efficiency       0.8386
+
+C* Theory            1444.85    m/s
+C* Actual            1366.55    m/s
+C* Efficiency        0.9458
+
+CF Theory (Dubious)  1.4224
+CF Actual            1.2871
+CF Efficiency        0.9049
+
+Fuel DP              18.89      Bar
+Fuel Stiffness       0.7155
+Fuel Core Cd         0.4950
+Fuel CdA             14.1127    mm^2
+
+Ox DP                7.61       Bar
+Ox Stiffness         0.2883
+Ox Cd                0.4993
+
+Regen DP             6.14       Bar
+Regen CdA            24.7538    mm^2
+--------------------------------------------------
